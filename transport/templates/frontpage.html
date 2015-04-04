@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/bootstrap2.min.css" />
+    <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/bootstrap-timepicker.min.css" />
+    <link rel="stylesheet" type="text/css" href="{{ STATIC_URL }}css/style.css" />
+    <title></title>
+</head>
+<body>
+<!--<div>Текущее время</div>-->
+<!--<div id="nowtime"></div>-->
+<div style="position:relative;">
+    <div class="route_info">
+        <h4 class="h4">Время отправления</h4>
+        <div class="input-append bootstrap-timepicker" style="z-index: 10;">
+            <input id="timepicker1" type="text" class="input-small">
+            <span class="add-on"><i class="icon-time"></i></span>
+        </div>
+        <button class="btn" id="set_time">Сейчас</button>
+        <button class="btn btn-success disabled " id="get_way">Найти путь</button>
+        <h4 class="h4">Оптимальный маршрут</h4>
+        <div id="legend" class="hidden">
+            <div><span style="display:inline-block;height:10px;width:28px;background-color:rgba(156,39,176,0.5);"></span> Пешком</div>
+            <div><span style="display:inline-block;height:10px;width:28px;background-color:rgba(0,150,136,0.5);"></span> На транспорте</div>
+        </div>
+        <div id="comment">Для построения оптимального маршрута выберите начальную и конечную точку на карте</div>
+        <div class="spinner hidden" style="width: 50%;margin: 0 auto;">
+            <div id="circularG" >
+                <div id="circularG_1" class="circularG">
+                </div>
+                <div id="circularG_2" class="circularG">
+                </div>
+                <div id="circularG_3" class="circularG">
+                </div>
+                <div id="circularG_4" class="circularG">
+                </div>
+                <div id="circularG_5" class="circularG">
+                </div>
+                <div id="circularG_6" class="circularG">
+                </div>
+                <div id="circularG_7" class="circularG">
+                </div>
+                <div id="circularG_8" class="circularG">
+                </div>
+            </div>
+            <div style="text-align:center;">Построение маршрута...</div>
+        </div>
+        <div id="routes"></div>
+    </div>
+
+    <div id="map" style="height:100vh;width:80vw;display:inline-block;right:0px;position:absolute;"></div>
+</div>
+</body>
+<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.js"></script>
+<script src="http://maps.google.com/maps/api/js?sensor=true"></script>
+<script type="text/javascript" src="{{ STATIC_URL }}js/bootstrap.min.js"></script>
+<script type="text/javascript" src="{{ STATIC_URL }}js/bootstrap-timepicker.js"></script>
+<script type="text/javascript" src="{{ STATIC_URL }}js/bootstrap-tooltip.js"></script>
+<script src="{{ STATIC_URL }}js/gmaps.js"></script>
+
+
+<script type="text/javascript">
+    var hours = function(time){
+        if (Math.floor(time / 60) < 10){
+            return "0"+Math.floor(time / 60);
+        }
+        else{
+           return Math.floor(time / 60);
+        }
+    }
+    var minutes = function(time){
+        if (Math.floor(time % 60) < 10){
+            return "0"+Math.floor(time % 60);
+        }
+        else{
+           return Math.floor(time % 60);
+        }
+    }
+    var drawRoute = function(index){
+        document.map.cleanRoute();
+        console.log(document.routes[index].stops[document.routes[index].start].lat, document.routes[index].stops[document.routes[index].start].lng);
+        document.map.drawRoute({
+              origin: [document.coordinates[0][0], document.coordinates[0][1]],
+              destination: [document.routes[index].stops[document.routes[index].start].lat, document.routes[index].stops[document.routes[index].start].lng],
+              travelMode: 'walking',
+              strokeColor: '#9c27b0',
+              strokeOpacity: 0.6,
+              strokeWeight: 6
+            });
+        var path=[];
+        for (i=document.routes[index].start; i<=document.routes[index].finish; i++){
+            path.push([document.routes[index].stops[i].lat, document.routes[index].stops[i].lng]);
+        }
+        document.map.drawPolyline({
+          path:path,
+          strokeColor: '#009688',
+          strokeOpacity: 0.6,
+          strokeWeight: 6
+        });
+        document.map.drawRoute({
+              origin: [document.routes[index].stops[document.routes[index].finish].lat, document.routes[index].stops[document.routes[index].finish].lng],
+              destination: [document.coordinates[1][0], document.coordinates[1][1]],
+              travelMode: 'walking',
+              strokeColor: '#9c27b0',
+              strokeOpacity: 0.6,
+              strokeWeight: 6
+            });
+    };
+    var get_way = function(){
+        var url = "{% url get_way %}";
+        var data = {points: JSON.stringify(document.coordinates), time:document.time};
+        $(".spinner").removeClass("hidden");
+        $("#routes, #comment").addClass("hidden");
+        $.ajax({
+            type: 'POST',
+            url: url,
+            data: data,
+            dataType: 'json'
+        }).done(function(result){
+            console.log(result);
+            $(".spinner").addClass("hidden");
+            $("#routes").removeClass("hidden");
+            $("#legend").removeClass("hidden");
+            if (result.length == 0){
+                $("#routes").html("Поиск не дал результатов");
+            }
+            else{
+                document.routes = result;
+                drawRoute(0);
+                var routes_html = ""
+                for (i=0;i<result.length; i++){
+                    routes_html += "<ul>"
+                    if (result[i].type=="bus"){
+                        routes_html += "<span class='icon icon_bus'></span> ";
+                    }
+                    if (result[i].type=="tram"){
+                        routes_html += "<span class='icon icon_tram'></span> ";
+                    }
+                    if (result[i].type=="trol"){
+                        routes_html += "<span class='icon icon_trol'></span> ";
+                    }
+                    routes_html += "<span id='draw_route' data-index="+"'"+i+"'>" + result[i].number+" "
+                    routes_html += "<span id='#road'>"+result[i].stops[0].name +" - "+ result[i].stops[result[i].stops.length-1].name+"</span></span>"
+                    routes_html +="<li>От ост. " + result[i].stops[result[i].start].name + " в "
+                    routes_html += hours(result[i].arrival) + ":" + minutes(result[i].arrival) +"</li>"
+                    routes_html +="<li>До ост. " + result[i].stops[result[i].finish].name + " в "
+                    routes_html += hours(result[i].arrival+result[i].road_time) + ":" + minutes(result[i].arrival+result[i].road_time)  +"</li>"
+                    routes_html +="<li>Время в поездке: " + minutes(result[i].road_time)+" мин. </li>"
+                    routes_html +="<li>Время прибытия: " + hours(result[i].finish_time)+":"+ minutes(result[i].finish_time)+"</li></ul>"
+
+                    //+"<li>Прибытие на место назанчения:" + result[i].finish_time+"</li>"
+                    //+"<li>Начальная остановка:" + result[i].stops[result[i].start].name+"</li>"
+                    //+"<li>Конечная остановка:" + result[i].stops[result[i].finish].name+"</li></ul>";
+                }
+                $("#routes").html(routes_html);
+                $("#routes>ul:first-child").addClass("ul_active");
+            }
+        });
+        $("#routes").on("click","ul",function(){
+            $("#routes>ul").removeClass("ul_active");
+            $(this).addClass("ul_active");
+            drawRoute(parseInt($(this).find("#draw_route").data("index")));
+        });
+    };
+    $(document).ready(function() {
+        document.points = [];
+        document.coordinates = [[0, 0], [0, 0]];
+        var selectingA = true;
+        var nowdate = new Date();
+        document.time = nowdate.getHours()*60+nowdate.getMinutes();
+        document.map = new GMaps({
+          div: '#map',
+          lat: 55.159976,
+          lng: 61.389795,
+          click: function(e){
+            if (selectingA){
+                document.coordinates[0][0] = e.latLng.k;
+                document.coordinates[0][1] = e.latLng.D;
+                selectingA = false;
+            }
+            else{
+                document.coordinates[1][0] = e.latLng.k;
+                document.coordinates[1][1] = e.latLng.D;
+                selectingA = true;
+            }
+            document.points.push([e.latLng.k, e.latLng.D]);
+            document.map.removeMarkers();
+            document.map.cleanRoute();
+            if (document.coordinates[0][0] != 0 || document.coordinates[0][1] != 0){
+                document.map.addMarker({
+                  lat: document.coordinates[0][0],
+                  lng: document.coordinates[0][1],
+                  title: 'A',
+                  icon: "{{ STATIC_URL }}img/start.png"
+                });
+            }
+            if (document.coordinates[1][0] != 0 || document.coordinates[1][1] != 0){
+                document.map.addMarker({
+                  lat: document.coordinates[1][0],
+                  lng: document.coordinates[1][1],
+                  title: 'B',
+                  icon: "{{ STATIC_URL }}img/finish.png",
+                });
+                $("#get_way").removeClass("disabled");
+            }
+          }
+        });
+
+        $("#nowtime").html("" + document.time);
+        $("#get_way").click(function(){
+            if ((document.coordinates[0][0] != 0 || document.coordinates[0][1] != 0) && (document.coordinates[1][0] != 0 || document.coordinates[1][1] != 0)){
+                checked_time = $('#timepicker1').timepicker().val();
+                var splitted_time = checked_time.split(":");
+                document.time = (+splitted_time[0])*60+ (+splitted_time[1]);
+                get_way();
+            }
+
+            }
+        );
+        $('#timepicker1').timepicker({
+            minuteStep: 1,
+            showMeridian: false
+        });
+        $("#set_time").click(function(){
+
+            now = new Date();
+            console.log(now);
+            $('#timepicker1').timepicker('setTime', now);
+        });
+    });
+
+</script>
+</html>
+
